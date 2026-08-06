@@ -147,6 +147,7 @@ function isPenReentry( g, dir ) {
 function decideGhost( game, g ) {
   const grid = game.grid;
   const p = game.pacman;
+  const i = game.ghosts.indexOf( g );
 
   // Sin liberar: bobing vertical dentro de la pen (filas 13..15).
   if ( !g.released ) {
@@ -155,9 +156,72 @@ function decideGhost( game, g ) {
     return;
   }
 
+  // Comido (ojos): viajar a su celda de inicio en la pen; puede cruzar la puerta.
+  // Al alinear con esa celda, reiniciar y volver a salir.
+  if ( g.eaten ) {
+    const start = GHOST_STARTS[ i ];
+    const sx = start.x;
+    const sy = start.y;
+    if ( Math.round( g.x ) === sx && Math.round( g.y ) === sy ) {
+      g.eaten = false;
+      g.released = true;
+      g.exited = false;
+      g.dir = 'up';
+      return;
+    }
+    const tx = sx;
+    const ty = sy;
+    const options = Object.keys( DIRS ).filter(
+      ( dir ) => canMove( grid, g.x, g.y, dir, 'ghost' )
+        && !isPenReentry( g, dir )
+    );
+    let best = g.dir;
+    let bestDist = Infinity;
+    for ( const dir of options ) {
+      const d = DIRS[ dir ];
+      const nx = g.x + d.x;
+      const ny = g.y + d.y;
+      const dist = Math.abs( nx - tx ) + Math.abs( ny - ty );
+      if ( dist < bestDist ) {
+        bestDist = dist;
+        best = dir;
+      }
+    }
+    g.dir = best;
+    return;
+  }
+
   // Liberado pero aun dentro: subir para salir por la puerta.
   if ( !g.exited ) {
     g.dir = 'up';
+    return;
+  }
+
+  // Asustado y fuera: huir hacia su esquina (GHOST_CORNERS[kind]).
+  if ( game.fright > 0 && g.exited ) {
+    const c = GHOST_CORNERS[ g.kind ];
+    const tx = c.x;
+    const ty = c.y;
+    // Opciones validas (no reversa salvo callejon, no reingreso a la pen).
+    const options = Object.keys( DIRS ).filter(
+      ( dir ) => dir !== OPPOSITE[ g.dir ]
+        && canMove( grid, g.x, g.y, dir, 'ghost' )
+        && !isPenReentry( g, dir )
+    );
+    const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
+    let best = choices[ 0 ];
+    let bestDist = Infinity;
+    for ( const dir of choices ) {
+      const d = DIRS[ dir ];
+      const nx = g.x + d.x;
+      const ny = g.y + d.y;
+      const dist = Math.abs( nx - tx ) + Math.abs( ny - ty );
+      if ( dist < bestDist ) {
+        bestDist = dist;
+        best = dir;
+      }
+    }
+    g.dir = best;
     return;
   }
 
