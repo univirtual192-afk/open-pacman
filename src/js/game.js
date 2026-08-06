@@ -138,8 +138,10 @@ function isPenDoor( x, y ) {
 }
 
 // Bloquea reingreso a la pen una vez el fantasma ha salido.
+// Excepcion: un fantasma comido (ojos) SI puede entrar para reespañar.
 function isPenReentry( g, dir ) {
   if ( !g.exited ) return false;
+  if ( g.eaten ) return false;
   const d = DIRS[ dir ];
   return isPenDoor( g.x + d.x, g.y + d.y );
 }
