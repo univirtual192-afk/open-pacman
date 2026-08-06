@@ -259,6 +259,21 @@ function collides( a, b ) {
 function update( game ) {
   // Liberacion escalonada de la pen por contador de frames.
   game.frame++;
+  // Tick del modo asustado: descender contador y resetear cadena al apagarse.
+  if ( game.fright > 0 ) {
+    game.fright--;
+    if ( game.fright === 0 ) {
+      game.frightChain = 0;
+      // Defensive: cualquier fantasma comido que aun este en vuelo se reinicia.
+      for ( const g of game.ghosts ) {
+        if ( g.eaten ) {
+          g.eaten = false;
+          g.released = true;
+          g.exited = false;
+        }
+      }
+    }
+  }
   for ( const g of game.ghosts ) {
     if ( !g.released && game.frame >= g.releaseAt ) g.released = true;
   }
