@@ -29,6 +29,7 @@ function createGame() {
     lives: 3,
     dotsRemaining: dots,
     grid,
+    frame: 0,
     pacman: {
       x: PACMAN_START.x,
       y: PACMAN_START.y,
@@ -36,12 +37,16 @@ function createGame() {
       nextDir: null,
       speed: PACMAN_SPEED,
     },
-    ghosts: GHOST_STARTS.map( ( g ) => ( {
+    ghosts: GHOST_STARTS.map( ( g, i ) => ( {
       x: g.x,
       y: g.y,
       dir: 'up',
-      speed: GHOST_SPEED,
+      speed: GHOST_SPEED,   // 1/10 (no cambia entre fantasmas)
       kind: g.kind,
+      color: g.color,
+      releaseAt: i * 120,   // Blinky=0, Pinky=120, Inky=240, Clyde=360 frames
+      released: i === 0,    // solo Blinky arranca libre
+      exited: false,        // se pone a true al salir de la pen (y<=11 alineado)
     } ) ),
   };
 }
@@ -110,38 +115,86 @@ function movePacman( game ) {
   wrapTunnel( p, width );
 }
 
+function isPenDoor( x, y ) {
+  // Puerta de la pen (fila 12, cols 13-14) e interior de la pen (filas 13-15).
+  return x >= 13 && x <= 14 && y >= 12 && y <= 15;
+}
+
+// Bloquea reingreso a la pen una vez el fantasma ha salido.
+function isPenReentry( g, dir ) {
+  if ( !g.exited ) return false;
+  const d = DIRS[ dir ];
+  return isPenDoor( g.x + d.x, g.y + d.y );
+}
+
 function decideGhost( game, g ) {
   const grid = game.grid;
   const p = game.pacman;
 
+  // Sin liberar: quieto en la pen hasta su turno.
+  if ( !g.released ) return;
+
+  // Liberado pero aun dentro: subir para salir por la puerta.
+  if ( !g.exited ) {
+    g.dir = 'up';
+    return;
+  }
+
+  // Liberado y fuera: IA por kind (target al que reducir distancia Manhattan).
+  const px = Math.round( p.x );
+  const py = Math.round( p.y );
+
+  let tx = px;
+  let ty = py;
+  if ( g.kind === 'pinky' ) {
+    const dp = DIRS[ p.dir ];
+    tx = px + 4 * dp.x;
+    ty = py + 4 * dp.y;
+  } else if ( g.kind === 'inky' ) {
+    const bp = game.ghosts.find( ( o ) => o.kind === 'blinky' );
+    const bx = bp ? Math.round( bp.x ) : px;
+    const by = bp ? Math.round( bp.y ) : py;
+    const ax = px + 2 * DIRS[ p.dir ].x;
+    const ay = py + 2 * DIRS[ p.dir ].y;
+    tx = bx + 2 * ( ax - bx );
+    ty = by + 2 * ( ay - by );
+  } else if ( g.kind === 'clyde' ) {
+    const dist = Math.abs( Math.round( g.x ) - px ) + Math.abs( Math.round( g.y ) - py );
+    if ( dist <= 8 ) {
+      const c = GHOST_CORNERS.clyde;
+      tx = c.x;
+      ty = c.y;
+    }
+  }
+
+  // Opciones validas (no reversa salvo callejon, no reingreso a la pen).
   const options = Object.keys( DIRS ).filter(
-    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
+    ( dir ) => dir !== OPPOSITE[ g.dir ]
+      && canMove( grid, g.x, g.y, dir, 'ghost' )
+      && !isPenReentry( g, dir )
   );
-  // Sin salida (callejon): permitir el giro de 180.
   const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
 
-  if ( g.kind === 'hunter' ) {
-    const px = Math.round( p.x );
-    const py = Math.round( p.y );
-    let best = choices[ 0 ];
-    let bestDist = Infinity;
-    for ( const dir of choices ) {
-      const d = DIRS[ dir ];
-      const nx = g.x + d.x;
-      const ny = g.y + d.y;
-      const dist = Math.abs( nx - px ) + Math.abs( ny - py );
-      if ( dist < bestDist ) {
-        bestDist = dist;
-        best = dir;
-      }
+  // Elegir la opcion con menor distancia Manhattan al target.
+  // Orden de DIRS = left/right/up/down; si hay empate se queda choices[0].
+  let best = choices[ 0 ];
+  let bestDist = Infinity;
+  for ( const dir of choices ) {
+    const d = DIRS[ dir ];
+    const nx = g.x + d.x;
+    const ny = g.y + d.y;
+    const dist = Math.abs( nx - tx ) + Math.abs( ny - ty );
+    if ( dist < bestDist ) {
+      bestDist = dist;
+      best = dir;
     }
-    g.dir = best;
-  } else {
-    g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
   }
+  g.dir = best;
 }
 
 function moveGhost( game, g ) {
+  if ( !g.released ) return; // sin liberar: quieto en la pen
+
   const grid = game.grid;
   const width = grid[ 0 ].length;
 
@@ -149,6 +202,8 @@ function moveGhost( game, g ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
     decideGhost( game, g );
+    // Marcar salida de la pen: al alinear por encima de la fila 12 (y<=11).
+    if ( !g.exited && g.y <= 11 ) g.exited = true;
     if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
   }
 
@@ -164,10 +219,13 @@ function resetPositions( game ) {
   p.y = PACMAN_START.y;
   p.dir = 'left';
   p.nextDir = null;
+  game.frame = 0;
   game.ghosts.forEach( ( g, i ) => {
     g.x = GHOST_STARTS[ i ].x;
     g.y = GHOST_STARTS[ i ].y;
     g.dir = 'up';
+    g.released = i === 0; // solo Blinky arranca libre
+    g.exited = false;
   } );
 }
 
@@ -176,6 +234,12 @@ function collides( a, b ) {
 }
 
 function update( game ) {
+  // Liberacion escalonada de la pen por contador de frames.
+  game.frame++;
+  for ( const g of game.ghosts ) {
+    if ( !g.released && game.frame >= g.releaseAt ) g.released = true;
+  }
+
   movePacman( game );
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 

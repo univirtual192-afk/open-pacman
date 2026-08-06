@@ -52,11 +52,22 @@ const MAZE = MAZE_STR.map( ( row ) => row.split( '' ).map( parseTile ) );
 const TUNNEL_ROW = 14;
 const PACMAN_START = { x: 13, y: 23 };
 const GHOST_STARTS = [
-  { x: 13, y: 14, kind: 'hunter' }, // dentro de la pen
-  { x: 14, y: 14, kind: 'random' }, // dentro de la pen
+  { x: 13, y: 14, kind: 'blinky', color: '#ff0000' }, // rojo
+  { x: 14, y: 14, kind: 'pinky',  color: '#ffb8de' }, // rosa
+  { x: 13, y: 15, kind: 'inky',   color: '#00ffff' }, // cian
+  { x: 14, y: 15, kind: 'clyde',  color: '#ffb852' }, // naranja
 ];
+
+// Esquinas de respaldo (target cuando la IA principal no decide, y para Clyde cercano).
+const GHOST_CORNERS = {
+  blinky: { x: 26, y: 1 },
+  pinky:  { x: 1,  y: 1 },
+  inky:   { x: 26, y: 29 },
+  clyde:  { x: 1,  y: 29 },
+};
 
 window.MAZE = MAZE;
 window.TUNNEL_ROW = TUNNEL_ROW;
 window.PACMAN_START = PACMAN_START;
 window.GHOST_STARTS = GHOST_STARTS;
+window.GHOST_CORNERS = GHOST_CORNERS;
