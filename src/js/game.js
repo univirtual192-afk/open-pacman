@@ -13,6 +13,12 @@ const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 const PACMAN_SPEED = 0.125; // 1/8 celda/frame -> alinea cada 8 frames
 const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 
+const FRIGHT_FRAMES = 420;        // ~7 s @ 60 FPS
+const FRIGHT_BLINK = 120;         // ultimos 120 frames: parpadeo
+const GHOST_SPEED_FRIGHT = 0.05;  // 1/20 celda/frame
+const GHOST_SPEED_EYES  = 0.25;   // 1/4 celda/frame
+const FRIGHT_SCORES = [ 200, 400, 800, 1600 ];
+
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
 // dots sin destruir el original, y reiniciar.
 function createGame() {
@@ -21,7 +27,7 @@ function createGame() {
   grid[ PACMAN_START.y ][ PACMAN_START.x ] = 0;
 
   let dots = 0;
-  for ( const row of grid ) for ( const v of row ) if ( v === 2 ) dots++;
+  for ( const row of grid ) for ( const v of row ) if ( v === 2 || v === 4 ) dots++;
 
   return {
     state: 'start',
@@ -30,6 +36,8 @@ function createGame() {
     dotsRemaining: dots,
     grid,
     frame: 0,
+    fright: 0,        // frames restantes de modo asustado
+    frightChain: 0,   // 0..3: indice en FRIGHT_SCORES de la cadena actual
     pacman: {
       x: PACMAN_START.x,
       y: PACMAN_START.y,
@@ -47,6 +55,8 @@ function createGame() {
       releaseAt: i * 120,   // Blinky=0, Pinky=120, Inky=240, Clyde=360 frames
       released: i === 0,    // solo Blinky arranca libre
       exited: false,        // se pone a true al salir de la pen (y<=11 alineado)
+      eaten: false,        // true mientras sus ojos vuelven a la pen
+      eatenAt: 0,          // game.frame en el que fue comido
     } ) ),
   };
 }
@@ -99,11 +109,18 @@ function movePacman( game ) {
       p.dir = p.nextDir;
       p.nextDir = null;
     }
-    // Comer dot.
-    if ( grid[ p.y ][ p.x ] === 2 ) {
+    // Comer dot / power pellet.
+    const tile = grid[ p.y ][ p.x ];
+    if ( tile === 2 ) {
       grid[ p.y ][ p.x ] = 0;
       game.score += 10;
       game.dotsRemaining--;
+    } else if ( tile === 4 ) {
+      grid[ p.y ][ p.x ] = 0;
+      game.score += 10;
+      game.dotsRemaining--;
+      game.fright = FRIGHT_FRAMES;
+      game.frightChain = 0;
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
@@ -121,8 +138,10 @@ function isPenDoor( x, y ) {
 }
 
 // Bloquea reingreso a la pen una vez el fantasma ha salido.
+// Excepcion: un fantasma comido (ojos) SI puede entrar para reespañar.
 function isPenReentry( g, dir ) {
   if ( !g.exited ) return false;
+  if ( g.eaten ) return false;
   const d = DIRS[ dir ];
   return isPenDoor( g.x + d.x, g.y + d.y );
 }
@@ -130,6 +149,7 @@ function isPenReentry( g, dir ) {
 function decideGhost( game, g ) {
   const grid = game.grid;
   const p = game.pacman;
+  const i = game.ghosts.indexOf( g );
 
   // Sin liberar: bobing vertical dentro de la pen (filas 13..15).
   if ( !g.released ) {
@@ -138,9 +158,72 @@ function decideGhost( game, g ) {
     return;
   }
 
+  // Comido (ojos): viajar a su celda de inicio en la pen; puede cruzar la puerta.
+  // Al alinear con esa celda, reiniciar y volver a salir.
+  if ( g.eaten ) {
+    const start = GHOST_STARTS[ i ];
+    const sx = start.x;
+    const sy = start.y;
+    if ( Math.round( g.x ) === sx && Math.round( g.y ) === sy ) {
+      g.eaten = false;
+      g.released = true;
+      g.exited = false;
+      g.dir = 'up';
+      return;
+    }
+    const tx = sx;
+    const ty = sy;
+    const options = Object.keys( DIRS ).filter(
+      ( dir ) => canMove( grid, g.x, g.y, dir, 'ghost' )
+        && !isPenReentry( g, dir )
+    );
+    let best = g.dir;
+    let bestDist = Infinity;
+    for ( const dir of options ) {
+      const d = DIRS[ dir ];
+      const nx = g.x + d.x;
+      const ny = g.y + d.y;
+      const dist = Math.abs( nx - tx ) + Math.abs( ny - ty );
+      if ( dist < bestDist ) {
+        bestDist = dist;
+        best = dir;
+      }
+    }
+    g.dir = best;
+    return;
+  }
+
   // Liberado pero aun dentro: subir para salir por la puerta.
   if ( !g.exited ) {
     g.dir = 'up';
+    return;
+  }
+
+  // Asustado y fuera: huir hacia su esquina (GHOST_CORNERS[kind]).
+  if ( game.fright > 0 && g.exited ) {
+    const c = GHOST_CORNERS[ g.kind ];
+    const tx = c.x;
+    const ty = c.y;
+    // Opciones validas (no reversa salvo callejon, no reingreso a la pen).
+    const options = Object.keys( DIRS ).filter(
+      ( dir ) => dir !== OPPOSITE[ g.dir ]
+        && canMove( grid, g.x, g.y, dir, 'ghost' )
+        && !isPenReentry( g, dir )
+    );
+    const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
+    let best = choices[ 0 ];
+    let bestDist = Infinity;
+    for ( const dir of choices ) {
+      const d = DIRS[ dir ];
+      const nx = g.x + d.x;
+      const ny = g.y + d.y;
+      const dist = Math.abs( nx - tx ) + Math.abs( ny - ty );
+      if ( dist < bestDist ) {
+        bestDist = dist;
+        best = dir;
+      }
+    }
+    g.dir = best;
     return;
   }
 
@@ -210,8 +293,10 @@ function moveGhost( game, g ) {
   }
 
   const d = DIRS[ g.dir ];
-  g.x += d.x * g.speed;
-  g.y += d.y * g.speed;
+  const sp = g.eaten ? GHOST_SPEED_EYES
+    : ( game.fright > 0 && g.exited && !g.eaten ? GHOST_SPEED_FRIGHT : g.speed );
+  g.x += d.x * sp;
+  g.y += d.y * sp;
   wrapTunnel( g, width );
 }
 
@@ -222,12 +307,16 @@ function resetPositions( game ) {
   p.dir = 'left';
   p.nextDir = null;
   game.frame = 0;
+  game.fright = 0;
+  game.frightChain = 0;
   game.ghosts.forEach( ( g, i ) => {
     g.x = GHOST_STARTS[ i ].x;
     g.y = GHOST_STARTS[ i ].y;
     g.dir = 'up';
     g.released = i === 0; // solo Blinky arranca libre
     g.exited = false;
+    g.eaten = false;
+    g.eatenAt = 0;
   } );
 }
 
@@ -238,6 +327,21 @@ function collides( a, b ) {
 function update( game ) {
   // Liberacion escalonada de la pen por contador de frames.
   game.frame++;
+  // Tick del modo asustado: descender contador y resetear cadena al apagarse.
+  if ( game.fright > 0 ) {
+    game.fright--;
+    if ( game.fright === 0 ) {
+      game.frightChain = 0;
+      // Defensive: cualquier fantasma comido que aun este en vuelo se reinicia.
+      for ( const g of game.ghosts ) {
+        if ( g.eaten ) {
+          g.eaten = false;
+          g.released = true;
+          g.exited = false;
+        }
+      }
+    }
+  }
   for ( const g of game.ghosts ) {
     if ( !g.released && game.frame >= g.releaseAt ) g.released = true;
   }
@@ -247,6 +351,20 @@ function update( game ) {
 
   for ( const g of game.ghosts ) {
     if ( collides( game.pacman, g ) ) {
+      if ( g.eaten ) {
+        // Ojos inofensivos: no afectan.
+        continue;
+      }
+      if ( game.fright > 0 ) {
+        // Comer fantasma asustado: ojos vuelven, suma puntuacion en cadena.
+        g.eaten = true;
+        g.eatenAt = game.frame;
+        const idx = Math.min( game.frightChain, FRIGHT_SCORES.length - 1 );
+        game.score += FRIGHT_SCORES[ idx ];
+        game.frightChain = Math.min( game.frightChain + 1, FRIGHT_SCORES.length - 1 );
+        continue;
+      }
+      // Fantasma normal: pierde una vida.
       game.lives--;
       if ( game.lives <= 0 ) {
         game.state = 'lost';
@@ -263,3 +381,4 @@ function update( game ) {
 window.createGame = createGame;
 window.update = update;
 window.DIRS = DIRS;
+window.FRIGHT_BLINK = FRIGHT_BLINK;
