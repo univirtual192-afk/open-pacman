@@ -193,8 +193,6 @@ function decideGhost( game, g ) {
 }
 
 function moveGhost( game, g ) {
-  if ( !g.released ) return; // sin liberar: quieto en la pen
-
   const grid = game.grid;
   const width = grid[ 0 ].length;
 
