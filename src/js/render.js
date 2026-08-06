@@ -100,7 +100,7 @@ function drawPacman( ctx, p, frame ) {
   ctx.fill();
 }
 
-function drawGhost( ctx, g, color ) {
+function drawGhost( ctx, g, game ) {
   const { cx, cy } = cellCenter( g.x, g.y );
   const r = TILE / 2 - 1;
   const top = cy - r;
@@ -108,17 +108,31 @@ function drawGhost( ctx, g, color ) {
   const left = cx - r;
   const right = cx + r;
 
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc( cx, cy - 1, r, Math.PI, 0, false ); // cabeza
-  ctx.lineTo( right, bottom );
-  // falda ondulada (3 picos)
-  ctx.lineTo( right - r * 0.66, bottom - 4 );
-  ctx.lineTo( cx, bottom );
-  ctx.lineTo( left + r * 0.66, bottom - 4 );
-  ctx.lineTo( left, bottom );
-  ctx.closePath();
-  ctx.fill();
+  // Color segun estado: comido (ojos, sin cuerpo), asustado (azul/parpadeo), normal.
+  let bodyColor = g.color;
+  let drawBody = true;
+  if ( g.eaten ) {
+    drawBody = false;
+  } else if ( game.fright > 0 ) {
+    bodyColor = '#2121ff';
+    if ( game.fright <= FRIGHT_BLINK && Math.floor( game.frame / 8 ) % 2 === 0 ) {
+      bodyColor = '#fff';
+    }
+  }
+
+  if ( drawBody ) {
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    ctx.arc( cx, cy - 1, r, Math.PI, 0, false ); // cabeza
+    ctx.lineTo( right, bottom );
+    // falda ondulada (3 picos)
+    ctx.lineTo( right - r * 0.66, bottom - 4 );
+    ctx.lineTo( cx, bottom );
+    ctx.lineTo( left + r * 0.66, bottom - 4 );
+    ctx.lineTo( left, bottom );
+    ctx.closePath();
+    ctx.fill();
+  }
 
   // ojos mirando segun direccion
   const dir = DIRS[ g.dir ] || { x: 0, y: 0 };
@@ -158,7 +172,7 @@ function draw( ctx, game, frame ) {
   drawDoor( ctx, grid );
   drawDots( ctx, grid );
   drawPacman( ctx, game.pacman, frame );
-  game.ghosts.forEach( ( g ) => drawGhost( ctx, g, g.color ) );
+  game.ghosts.forEach( ( g ) => drawGhost( ctx, g, game ) );
   drawHUD( ctx, game, W );
 }
 
