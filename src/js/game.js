@@ -109,11 +109,18 @@ function movePacman( game ) {
       p.dir = p.nextDir;
       p.nextDir = null;
     }
-    // Comer dot.
-    if ( grid[ p.y ][ p.x ] === 2 ) {
+    // Comer dot / power pellet.
+    const tile = grid[ p.y ][ p.x ];
+    if ( tile === 2 ) {
       grid[ p.y ][ p.x ] = 0;
       game.score += 10;
       game.dotsRemaining--;
+    } else if ( tile === 4 ) {
+      grid[ p.y ][ p.x ] = 0;
+      game.score += 10;
+      game.dotsRemaining--;
+      game.fright = FRIGHT_FRAMES;
+      game.frightChain = 0;
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
