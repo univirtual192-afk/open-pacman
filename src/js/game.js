@@ -227,8 +227,10 @@ function moveGhost( game, g ) {
   }
 
   const d = DIRS[ g.dir ];
-  g.x += d.x * g.speed;
-  g.y += d.y * g.speed;
+  const sp = g.eaten ? GHOST_SPEED_EYES
+    : ( game.fright > 0 && g.exited && !g.eaten ? GHOST_SPEED_FRIGHT : g.speed );
+  g.x += d.x * sp;
+  g.y += d.y * sp;
   wrapTunnel( g, width );
 }
 
