@@ -13,6 +13,12 @@ const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 const PACMAN_SPEED = 0.125; // 1/8 celda/frame -> alinea cada 8 frames
 const GHOST_SPEED = 0.1;    // 1/10 celda/frame
 
+const FRIGHT_FRAMES = 420;        // ~7 s @ 60 FPS
+const FRIGHT_BLINK = 120;         // ultimos 120 frames: parpadeo
+const GHOST_SPEED_FRIGHT = 0.05;  // 1/20 celda/frame
+const GHOST_SPEED_EYES  = 0.25;   // 1/4 celda/frame
+const FRIGHT_SCORES = [ 200, 400, 800, 1600 ];
+
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
 // dots sin destruir el original, y reiniciar.
 function createGame() {
@@ -21,7 +27,7 @@ function createGame() {
   grid[ PACMAN_START.y ][ PACMAN_START.x ] = 0;
 
   let dots = 0;
-  for ( const row of grid ) for ( const v of row ) if ( v === 2 ) dots++;
+  for ( const row of grid ) for ( const v of row ) if ( v === 2 || v === 4 ) dots++;
 
   return {
     state: 'start',
@@ -30,6 +36,8 @@ function createGame() {
     dotsRemaining: dots,
     grid,
     frame: 0,
+    fright: 0,        // frames restantes de modo asustado
+    frightChain: 0,   // 0..3: indice en FRIGHT_SCORES de la cadena actual
     pacman: {
       x: PACMAN_START.x,
       y: PACMAN_START.y,
@@ -47,6 +55,8 @@ function createGame() {
       releaseAt: i * 120,   // Blinky=0, Pinky=120, Inky=240, Clyde=360 frames
       released: i === 0,    // solo Blinky arranca libre
       exited: false,        // se pone a true al salir de la pen (y<=11 alineado)
+      eaten: false,        // true mientras sus ojos vuelven a la pen
+      eatenAt: 0,          // game.frame en el que fue comido
     } ) ),
   };
 }
@@ -222,12 +232,16 @@ function resetPositions( game ) {
   p.dir = 'left';
   p.nextDir = null;
   game.frame = 0;
+  game.fright = 0;
+  game.frightChain = 0;
   game.ghosts.forEach( ( g, i ) => {
     g.x = GHOST_STARTS[ i ].x;
     g.y = GHOST_STARTS[ i ].y;
     g.dir = 'up';
     g.released = i === 0; // solo Blinky arranca libre
     g.exited = false;
+    g.eaten = false;
+    g.eatenAt = 0;
   } );
 }
 
