@@ -131,8 +131,12 @@ function decideGhost( game, g ) {
   const grid = game.grid;
   const p = game.pacman;
 
-  // Sin liberar: quieto en la pen hasta su turno.
-  if ( !g.released ) return;
+  // Sin liberar: bobing vertical dentro de la pen (filas 13..15).
+  if ( !g.released ) {
+    if ( g.dir === 'up' && g.y <= 13 ) g.dir = 'down';      // no cruzar la puerta
+    else if ( g.dir === 'down' && g.y >= 15 ) g.dir = 'up'; // no cruzar el fondo
+    return;
+  }
 
   // Liberado pero aun dentro: subir para salir por la puerta.
   if ( !g.exited ) {
