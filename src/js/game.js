@@ -351,6 +351,20 @@ function update( game ) {
 
   for ( const g of game.ghosts ) {
     if ( collides( game.pacman, g ) ) {
+      if ( g.eaten ) {
+        // Ojos inofensivos: no afectan.
+        continue;
+      }
+      if ( game.fright > 0 ) {
+        // Comer fantasma asustado: ojos vuelven, suma puntuacion en cadena.
+        g.eaten = true;
+        g.eatenAt = game.frame;
+        const idx = Math.min( game.frightChain, FRIGHT_SCORES.length - 1 );
+        game.score += FRIGHT_SCORES[ idx ];
+        game.frightChain = Math.min( game.frightChain + 1, FRIGHT_SCORES.length - 1 );
+        continue;
+      }
+      // Fantasma normal: pierde una vida.
       game.lives--;
       if ( game.lives <= 0 ) {
         game.state = 'lost';
